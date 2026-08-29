@@ -400,7 +400,7 @@ std::unordered_map<std::string, void*> MinecraftUtils::getApi() {
         auto&& def = [](void* user, void* orig) {
             *(void**)user = orig;
         };
-        preinitHooks[name] = {sym, orig, orig ? def : nullptr};
+        preinitHooks[name] = {sym, orig, orig ? (void(*)(void*, void*))def : nullptr};
     };
 
     syms["mcpelauncher_hook"] = (void*)(void* (*)(void*, void*, void**))[](void* sym, void* hook, void** orig) {

@@ -131,6 +131,16 @@ void MinecraftUtils::stubFMod() {
 }
 
 void MinecraftUtils::setupHybris() {
+    // Map Android internal/external storage roots to the host data directory so that
+    // statvfs/statfs and file access on these paths resolve to a real, writable location.
+    std::string dataDir = PathHelper::getPrimaryDataDirectory();
+    shim::rewrite_filesystem_access.emplace_back("/storage/emulated/0", dataDir);
+    shim::rewrite_filesystem_access.emplace_back("/mnt/sdcard", dataDir);
+    shim::rewrite_filesystem_access.emplace_back("/sdcard", dataDir);
+    shim::rewrite_filesystem_access.emplace_back("/internal", dataDir);
+    shim::rewrite_filesystem_access.emplace_back("/external", dataDir);
+    shim::rewrite_filesystem_access.emplace_back("/storage", dataDir);
+
     HybrisUtils::loadLibraryOS("libz.so",
 #ifdef __APPLE__
                                "libz.dylib"

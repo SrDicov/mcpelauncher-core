@@ -15,6 +15,9 @@
 #include <FileUtil.h>
 #include <mcpelauncher/linker.h>
 #include <libc_shim.h>
+#include <dlfcn.h>
+#include <elf.h>
+#include <link.h>
 #include <stdexcept>
 #include <cstring>
 #if defined(__APPLE__) && defined(__aarch64__)
@@ -43,10 +46,43 @@ static bool ReadEnvFlag(const char* name, bool def = false) {
     return sval == "true" || sval == "1" || sval == "on";
 }
 
+// Expose every symbol exported by the host (musl) libc so that bionic libraries can
+// resolve symbols the shim table does not list explicitly (e.g. pthread_sigmask).
+// This mirrors what the glibc build gets for free from the host C library.
+static void addHostLibcSymbols(std::unordered_map<std::string, void*>& syms) {
+    void* h = dlopen("libc.so", RTLD_LAZY | RTLD_NOLOAD | RTLD_LOCAL);
+    if(!h) return;
+    struct link_map* lm = nullptr;
+    if(dlinfo(h, RTLD_DI_LINKMAP, &lm) != 0 || !lm || !lm->l_ld) return;
+    Elf64_Dyn* dyn = lm->l_ld;
+    Elf64_Sym* symtab = nullptr;
+    const char* strtab = nullptr;
+    uint32_t* hash = nullptr;
+    for(Elf64_Dyn* d = dyn; d->d_tag != DT_NULL; d++) {
+        if(d->d_tag == DT_SYMTAB)
+            symtab = (Elf64_Sym*)(uintptr_t)(lm->l_addr + d->d_un.d_ptr);
+        else if(d->d_tag == DT_STRTAB)
+            strtab = (const char*)(uintptr_t)(lm->l_addr + d->d_un.d_ptr);
+        else if(d->d_tag == DT_HASH)
+            hash = (uint32_t*)(uintptr_t)(lm->l_addr + d->d_un.d_ptr);
+    }
+    if(!symtab || !strtab || !hash) return;
+    uint32_t nchain = hash[1];
+    for(uint32_t i = 0; i < nchain; i++) {
+        if(symtab[i].st_shndx == SHN_UNDEF) continue;
+        if(symtab[i].st_name == 0) continue;
+        const char* name = strtab + symtab[i].st_name;
+        if(syms.find(name) != syms.end()) continue;
+        void* addr = dlsym(h, name);
+        if(addr) syms[name] = addr;
+    }
+}
+
 std::unordered_map<std::string, void*> MinecraftUtils::getLibCSymbols() {
     std::unordered_map<std::string, void*> syms;
     for(auto const& s : shim::get_shimmed_symbols())
         syms[s.name] = s.value;
+    addHostLibcSymbols(syms);
     return syms;
 }
 

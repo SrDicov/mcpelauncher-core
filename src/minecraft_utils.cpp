@@ -134,6 +134,14 @@ void MinecraftUtils::setupHybris() {
     // Map Android internal/external storage roots to the host data directory so that
     // statvfs/statfs and file access on these paths resolve to a real, writable location.
     std::string dataDir = PathHelper::getPrimaryDataDirectory();
+    FileUtil::mkdirRecursive(dataDir + "tmp/");
+    FileUtil::mkdirRecursive(dataDir + "crash/");
+    // Events/telemetry SQLite uses /data/local/tmp/<guid>.db; redirect it to a
+    // real writable directory so database creation does not fail with ENOENT.
+    shim::rewrite_filesystem_access.emplace_back("/data/local/tmp", dataDir + "tmp");
+    shim::rewrite_filesystem_access.emplace_back("/data/local", dataDir + "tmp");
+    // Breakpad is configured with directory "/crash"; keep it writable.
+    shim::rewrite_filesystem_access.emplace_back("/crash", dataDir + "crash");
     shim::rewrite_filesystem_access.emplace_back("/storage/emulated/0", dataDir);
     shim::rewrite_filesystem_access.emplace_back("/mnt/sdcard", dataDir);
     shim::rewrite_filesystem_access.emplace_back("/sdcard", dataDir);

@@ -136,6 +136,11 @@ void MinecraftUtils::setupHybris() {
     std::string dataDir = PathHelper::getPrimaryDataDirectory();
     FileUtil::mkdirRecursive(dataDir + "tmp/");
     FileUtil::mkdirRecursive(dataDir + "crash/");
+    // The game derives some paths from the legacy external storage path, which
+    // the launcher reports as empty, producing root-absolute paths such as
+    // "/bootstrap_settings.json". Redirect that persistence file into the
+    // data dir so settings/login/worlds state can actually be saved.
+    shim::rewrite_filesystem_access.emplace_back("/bootstrap_settings.json", dataDir + "bootstrap_settings.json");
     // Events/telemetry SQLite uses /data/local/tmp/<guid>.db; redirect it to a
     // real writable directory so database creation does not fail with ENOENT.
     shim::rewrite_filesystem_access.emplace_back("/data/local/tmp", dataDir + "tmp");
